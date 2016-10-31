@@ -1,53 +1,77 @@
-(define *runnables* '())
+(define *promises* '())
+
+(define (make-promise value state then handle thunk)
+  (list '&promise value state then handle thunk))
+
+(define (promise? p)
+  (and (list? p)
+       (equal? (car p) '&promise)))
+
+(define (promise-value p)
+  (cadr p))
+
+(define (promise-state p)
+  (caddr p))
+
+(define (promise-then p)
+  (cadddr p))
+
+(define (promise-handle p)
+  (car (cddddr p)))
+
+(define (promise-thunk p)
+  (cadr (cddddr p)))
 
 (define (promise fun)
-  (let ((val '())
-        (state '())
-        (on-resolve (lambda (x) x))
-        (on-reject (lambda (x) x)))
-    (let ((resolve (lambda (v)
-                     (set! val v)
-                     (set! state 'resolved)
-                     (on-resolve val)))
-          (reject (lambda (e)
-                    (set! val e)
-                    (set! state 'rejected)
-                    (on-reject val)))
-          (then (lambda (t)
-                  (set! on-resolve t)
-                  (when (equal? state 'resolved)
-                    (on-resolve val))))
-          (handle (lambda (h)
-                    (set! on-reject h)
-                    (when (equal? state 'rejected)
-                      (on-reject val))))
-          (get-value (lambda () val))
-          (get-state (lambda () state)))
-      (let ((promise (list get-value get-state then handle)))
-        (set! *runnables* (cons (list fun resolve reject) *runnables*))
-        promise))))
+  (let* ((val '())
+         (state '())
+         (on-resolve (lambda (x) x))
+         (on-reject (lambda (x) x))
+         (resolve (lambda (v)
+                    (set! val v)
+                    (set! state 'resolved)
+                    (on-resolve val)))
+         (reject (lambda (e)
+                   (set! val e)
+                   (set! state 'rejected)
+                   (on-reject val)))
+         (then (lambda (t)
+                 (set! on-resolve t)
+                 (when (equal? state 'resolved)
+                   (on-resolve val))))
+         (handle (lambda (h)
+                   (set! on-reject h)
+                   (when (equal? state 'rejected)
+                     (on-reject val))))
+         (promise (make-promise (lambda () val)
+                                (lambda () state)
+                                then
+                                handle
+                                (lambda () (fun resolve reject)))))
+    (set! *promises* (cons promise *promises*))
+    promise))
 
-(define (run! runnable)
-  ((car runnable) (cadr runnable) (caddr runnable)))
+(define (run! p)
+  ((promise-thunk p)))
 
 (define (run-all!)
-  (let ((r *runnables*))
-    (set! *runnables* '())
-    (map run! r)
-    (unless (equal? *runnables* '())
+  (let ((ps *promises*))
+    (set! *promises* '())
+    (map run! ps)
+    (unless (equal? *promises* '())
       (run-all!))))
 
 (define (on-resolve promise fun)
-  ((caddr promise) fun))
+  ((promise-then promise) fun))
 
 (define (on-reject promise fun)
-  ((cadddr promise) fun))
+  ((promise-handle promise) fun))
 
 (define (value promise)
-  ((car promise)))
+  ((promise-value promise)))
 
 (define (state promise)
-  ((cadr promise)))
+  ((promise-state promise)))
 
 (define (>>= p0 fun)
   (promise (lambda (resolve reject)
@@ -67,9 +91,9 @@
 
 (define (handle p handler)
   (promise (lambda (resolve _)
-             ((cadddr p)
-              (lambda (error)
-                (resolve (handler error)))))))
+             (on-reject p
+                        (lambda (error)
+                          (resolve (handler error)))))))
 
 ;;;
 
@@ -138,7 +162,7 @@
 
 (then (&/ (& 3.14) (&* (& 8) (& 9))) on-success)
 
-(set! *runnables* (shuffle *runnables*))
+(set! *promises* (shuffle *promises*))
 (run-all!)
 
 ;;;
