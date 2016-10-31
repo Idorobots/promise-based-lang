@@ -165,9 +165,28 @@
 (set! *promises* (shuffle *promises*))
 (run-all!)
 
-;;;
+;;; Benchmark:
 
-(define n 30)
+(define (on-success result)
+  result)
+
+(define (on-failure error)
+  error)
+
+(define n 23)
+
+(define (benchmark times thunk)
+  (collect-garbage)
+  (let-values (((_ cpu real gc) (time-apply (lambda ()
+                                              (let loop ((n times))
+                                                (unless (= n 0)
+                                                  (thunk)
+                                                  (loop (- n 1)))))
+                                            '())))
+    (collect-garbage)
+    (list (cons 'cpu-time (/ cpu 1.0 times))
+          (cons 'real-time (/ real 1.0 times))
+          (cons 'gc-time (/ gc 1.0 times)))))
 
 ;; Synchronous:
 (define (fib n)
@@ -176,10 +195,9 @@
       (+ (fib (- n 1))
          (fib (- n 2)))))
 
-(time (on-success (fib n)))
-
-;; result is: 1346269
-;; cpu time: 34 real time: 32 gc time: 0
+(benchmark 1000
+           (lambda ()
+             (on-success (fib n))))
 
 ;; Promise:
 (define (fib-promise n)
@@ -188,12 +206,10 @@
        (&+ (fib-promise (&- n (& 1)))
            (fib-promise (&- n (& 2))))))
 
-(then (fib-promise (& n)) on-success)
-
-(time (run-all!))
-
-;; result is: 1346269
-;; cpu time: 79264 real time: 79233 gc time: 63396
+(benchmark 100
+           (lambda ()
+             (then (fib-promise (& n)) on-success)
+             (run-all!)))
 
 ;; CPS:
 (define (cps-primop op)
@@ -230,10 +246,9 @@
                  handler)))
        handler))
 
-(time (fib-cps n on-success on-failure))
-
-;; result is: 1346269
-;; cpu time: 280 real time: 281 gc time: 0
+(benchmark 1000
+           (lambda ()
+             (fib-cps n on-success on-failure)))
 
 ;; CPS with yield:
 (define *continuation* '())
@@ -291,18 +306,13 @@
                  handler)))
        handler))
 
-(schedule (lambda ()
-            (fib-cps2 n
-                      (lambda (result)
-                        (display "result is: ")
-                        (display result)
-                        (newline))
-                      (lambda (e) e))))
-
-(time (step-all!))
-
-;; result is: 1346269
-;; cpu time: 533 real time: 534 gc time: 7
+(benchmark 1000
+           (lambda ()
+             (schedule (lambda ()
+                         (fib-cps2 n
+                                   on-success
+                                   on-failure)))
+             (step-all!)))
 
 ;;; CPS error handling:
 
