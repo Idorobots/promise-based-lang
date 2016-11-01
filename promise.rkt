@@ -49,13 +49,13 @@
                    (if (equal? state 'rejected)
                        (h val)
                        (set! on-reject h))))
-         (promise (make-promise (lambda () val)
-                                (lambda () state)
-                                then
-                                handle
-                                (lambda () (fun resolve reject)))))
-    (set! *promises* (cons promise *promises*))
-    promise))
+         (p (make-promise (lambda () val)
+                          (lambda () state)
+                          then
+                          handle
+                          (lambda () (fun resolve reject)))))
+    (set! *promises* (cons p *promises*))
+    p))
 
 (define (run! p)
   ((promise-thunk p)))
