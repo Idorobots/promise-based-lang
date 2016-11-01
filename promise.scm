@@ -116,8 +116,12 @@
 (define &<= (primop <=))
 
 (define (& value)
-  (promise (lambda (resolve _)
-             (resolve value))))
+  (make-promise (lambda () value)
+                (lambda () 'resolved)
+                (lambda (t)
+                  (t value))
+                (lambda (h) value)
+                (lambda () value)))
 
 ;;;
 
