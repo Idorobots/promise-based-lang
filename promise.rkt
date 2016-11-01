@@ -90,6 +90,14 @@
                              (on-reject p1 reject)
                              (on-resolve p1 resolve)))))))
 
+(define (>>=-handle p0 handler)
+  (promise (lambda (resolve reject)
+             (on-reject p0
+                        (lambda (error)
+                          (let ((p1 (handler error)))
+                            (on-reject p1 reject)
+                            (on-resolve p1 resolve)))))))
+
 (define (then p fun)
   (promise (lambda (resolve reject)
              (on-reject p reject)
@@ -170,7 +178,16 @@
                                    (reject "Can't divide by 0!")
                                    (resolve (/ a b))))))))))
 
-(handle (then (&/ (& 10) (& 0))
+(define (&catch value handler)
+  (>>= handler
+       (lambda (h)
+         (>>=-handle value
+                     (lambda (error)
+                       (h (& error)))))))
+
+(handle (then (&catch (&/ (& 10) (& 0))
+              (& (lambda (error)
+                   (&/ (& 10) (& 0.001))))) ;; Close enough!
               on-success)
         on-failure)
 
