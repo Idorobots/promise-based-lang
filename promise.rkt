@@ -4,31 +4,12 @@
 
 (define *promises* '())
 
-(define (make-promise value state then handle thunk)
-  (list '&promise value state then handle thunk))
-
-(define (promise? p)
-  (and (list? p)
-       (equal? (car p) '&promise)))
-
-(define (promise-value p)
-  (cadr p))
-
-(define (promise-state p)
-  (caddr p))
-
-(define (promise-then p)
-  (cadddr p))
-
-(define (promise-handle p)
-  (car (cddddr p)))
-
-(define (promise-thunk p)
-  (cadr (cddddr p)))
+(struct promise
+  (value state then handle thunk))
 
 (define (id x) x)
 
-(define (promise fun)
+(define (make-promise fun)
   (let* ((val '())
          (state 'pending)
          (on-resolve id)
@@ -49,11 +30,11 @@
                    (if (equal? state 'rejected)
                        (h val)
                        (set! on-reject h))))
-         (p (make-promise (lambda () val)
-                          (lambda () state)
-                          then
-                          handle
-                          (lambda () (fun resolve reject)))))
+         (p (promise (lambda () val)
+                     (lambda () state)
+                     then
+                     handle
+                     (lambda () (fun resolve reject)))))
     (set! *promises* (cons p *promises*))
     p))
 
@@ -82,36 +63,36 @@
   ((promise-state promise)))
 
 (define (>>= p0 fun)
-  (promise (lambda (resolve reject)
-             (on-reject p0 reject)
-             (on-resolve p0
-                         (lambda (val)
-                           (let ((p1 (fun val)))
-                             (on-reject p1 reject)
-                             (on-resolve p1 resolve)))))))
+  (make-promise (lambda (resolve reject)
+                  (on-reject p0 reject)
+                  (on-resolve p0
+                              (lambda (val)
+                                (let ((p1 (fun val)))
+                                  (on-reject p1 reject)
+                                  (on-resolve p1 resolve)))))))
 
 (define (>>=-handle p0 handler)
-  (promise (lambda (resolve reject)
-             (on-reject p0
-                        (lambda (error)
-                          (let ((p1 (handler error)))
-                            (on-reject p1 reject)
-                            (on-resolve p1 resolve)))))))
+  (make-promise (lambda (resolve reject)
+                  (on-reject p0
+                             (lambda (error)
+                               (let ((p1 (handler error)))
+                                 (on-reject p1 reject)
+                                 (on-resolve p1 resolve)))))))
 
 (define (then p fun)
-  (promise (lambda (resolve reject)
-             (on-reject p reject)
-             (on-resolve p
-                         (lambda (val)
-                           (resolve (fun val)))))))
+  (make-promise (lambda (resolve reject)
+                  (on-reject p reject)
+                  (on-resolve p
+                              (lambda (val)
+                                (resolve (fun val)))))))
 
 (provide then)
 
 (define (handle p handler)
-  (promise (lambda (resolve _)
-             (on-reject p
-                        (lambda (error)
-                          (resolve (handler error)))))))
+  (make-promise (lambda (resolve _)
+                  (on-reject p
+                             (lambda (error)
+                               (resolve (handler error)))))))
 
 (provide handle)
 
@@ -136,12 +117,12 @@
 (define &<= (primop <=))
 
 (define (& value)
-  (make-promise (lambda () value)
-                (lambda () 'resolved)
-                (lambda (t)
-                  (t value))
-                (lambda (h) value)
-                (lambda () value)))
+  (promise (lambda () value)
+           (lambda () 'resolved)
+           (lambda (t)
+             (t value))
+           (lambda (h) value)
+           (lambda () value)))
 
 (provide &)
 
@@ -173,10 +154,10 @@
 (define (&/ a b)
   (>>= a (lambda (a)
            (>>= b (lambda (b)
-                    (promise (lambda (resolve reject)
-                               (if (equal? b 0)
-                                   (reject "Can't divide by 0!")
-                                   (resolve (/ a b))))))))))
+                    (make-promise (lambda (resolve reject)
+                                    (if (equal? b 0)
+                                        (reject "Can't divide by 0!")
+                                        (resolve (/ a b))))))))))
 
 (define (&catch value handler)
   (>>= handler
@@ -186,8 +167,8 @@
                        (h (& error)))))))
 
 (handle (then (&catch (&/ (& 10) (& 0))
-              (& (lambda (error)
-                   (&/ (& 10) (& 0.001))))) ;; Close enough!
+                      (& (lambda (error)
+                           (&/ (& 10) (& 0.001))))) ;; Close enough!
               on-success)
         on-failure)
 
